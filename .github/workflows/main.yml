@@ -1,141 +1,31 @@
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 5.0"
-    }
-  }
-}
+name: Terraform Azure
 
-provider "azurerm" {
-  features {}
-}
+on:
+  workflow_dispatch:
 
-# ============================================================
-# RECURSOS EXISTENTES
-# ============================================================
+permissions:
+  id-token: write
+  contents: read
 
-data "azurerm_resource_group" "lab" {
-  name = "LinuxTeste"
-}
+env:
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-data "azurerm_virtual_network" "lab" {
-  name                = "LinuxTeste-vnet"
-  resource_group_name = data.azurerm_resource_group.lab.name
-}
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
 
-data "azurerm_subnet" "default" {
-  name                 = "default"
-  virtual_network_name = data.azurerm_virtual_network.lab.name
-  resource_group_name  = data.azurerm_resource_group.lab.name
-}
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
 
-# ============================================================
-# NETWORK SECURITY GROUP
-# ============================================================
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
 
-resource "azurerm_network_security_group" "vm" {
-  name                = "LinuxTeste-TF-nsg"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
+      - name: Inicializar Terraform
+        run: terraform init
 
-  security_rule {
-    name                       = "SSH"
-    priority                   = 1001
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix     = "*"
-    destination_address_prefix = "*"
-  }
-}
-
-# ============================================================
-# IP PÚBLICO
-# ============================================================
-
-resource "azurerm_public_ip" "vm" {
-  name                = "LinuxTeste-TF-ip"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-
-  allocation_method = "Static"
-  sku               = "Standard"
-}
-
-# ============================================================
-# INTERFACE DE REDE
-# ============================================================
-
-resource "azurerm_network_interface" "vm" {
-  name                = "LinuxTeste-TF-nic"
-  location            = data.azurerm_resource_group.lab.location
-  resource_group_name = data.azurerm_resource_group.lab.name
-
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = data.azurerm_subnet.default.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.vm.id
-  }
-}
-
-# Associar o NSG à interface de rede
-resource "azurerm_network_interface_security_group_association" "vm" {
-  network_interface_id      = azurerm_network_interface.vm.id
-  network_security_group_id = azurerm_network_security_group.vm.id
-}
-
-# ============================================================
-# MÁQUINA VIRTUAL
-# ============================================================
-
-resource "azurerm_linux_virtual_machine" "vm" {
-  name                = "LinuxTeste-TF"
-  resource_group_name = data.azurerm_resource_group.lab.name
-  location            = data.azurerm_resource_group.lab.location
-  size                = "Standard_B2ats_v2"
-
-  admin_username = "azureuser"
-
-  disable_password_authentication = true
-
-  network_interface_ids = [
-    azurerm_network_interface.vm.id
-  ]
-
-  admin_ssh_key {
-    username   = "azureuser"
-    public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDC6jsBFaxcs+eUbsbFdQMRdhuGQYV5g/BD/zhkiHE/g52mV1m2KjtODC47h3J0k+k9V0bewYA5+GNrvxngD4J3rbHhIRCHjNv4DbJqGljnSALeAUj16bxjZeL2nuJjgCjbIGUwNtH5G8y31vHZDCEJtM80a5KYWuy5ziM++UQi2DHTqErzsSYVtjII+OD4tZil3sa+hM5X1CN/ol9CytXxinvGfVKttLXnjY3LZQ1GxitYOoTujnGz5sPGtr7rxdlQJsR+OLJr7G66j2VV0PeaxDYL2JN2bWwdUUQbuFLlJH+ey0598vDnfYLKhYZZIBIOkphqsL99evX9ZgQExkhaDySJFwMZEHjcdBVbrlCsL9kcp/W/v2ecupPJewh/IMK60I0wAGuOgo+kRJF+r/LA1fcRjmZ58YsLx3wCC8cQtVuEriWY2/SZY1OvRXbep+cj+33Lj9X139mIp0MyFMRJURAI4kax8xLW4Hlf6AFKkd9Fk+S0W2qNrYkTv/zxy1U= imported-openssh-key"
-  }
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "Standard_LRS"
-  }
-
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "ubuntu-22_04-lts"
-    sku       = "server-gen2"
-    version   = "latest"
-  }
-}
-
-# ============================================================
-# OUTPUTS
-# ============================================================
-
-output "nome_vm" {
-  value = azurerm_linux_virtual_machine.vm.name
-}
-
-output "ip_publico" {
-  value = azurerm_public_ip.vm.ip_address
-}
-
-output "tamanho_vm" {
-  value = azurerm_linux_virtual_machine.vm.size
-}
+      - name: Planejar Terraform
+        run: terraform plan
