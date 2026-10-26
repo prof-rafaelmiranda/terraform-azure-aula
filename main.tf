@@ -121,7 +121,7 @@ resource "azurerm_network_interface_security_group_association" "vm" {
 # ============================================================
 
 resource "azurerm_linux_virtual_machine" "vm" {
-  name                = "terraform-linux-vm"
+  name                = "terraform-linux-vm-2"
   resource_group_name = azurerm_resource_group.lab.name
   location            = azurerm_resource_group.lab.location
   size                = "Standard_B2ats_v2"
@@ -141,11 +141,15 @@ resource "azurerm_linux_virtual_machine" "vm" {
   custom_data = base64encode(<<-CLOUDCONFIG
     #cloud-config
     package_update: true
+  
     packages:
       - docker.io
+      - docker-compose-v2
+  
     runcmd:
       - [systemctl, enable, --now, docker]
       - [usermod, -aG, docker, azureuser]
+      - [docker, compose, version]
   CLOUDCONFIG
   )
 
